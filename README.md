@@ -3,6 +3,19 @@ Sync/Batcher for Angular
 
 Service to batch up offline requests and sync them with a server when possible.
 
+*Install*
+```
+bower install https://github.com/Haemp/sync
+```
+
+*Develop*
+```
+git clone https://github.com/Haemp/sync
+cd /sync
+npm install
+bower install
+```
+
 *Configure*
 pollInterval - used to check connection status
 pollUrl - ping every pollInterval
