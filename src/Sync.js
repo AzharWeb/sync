@@ -1,6 +1,9 @@
 /**
  * @author: +HampusAhlgren
- * [] Add manual mode
+ * [ ] Add manual mode
+ * [ ] Notify should be an event since in auto mode we don't have a conveinient
+ *     access point to get the promise
+ * [ ] Way to handle error in sync
  */
 
 var Sync = angular.module('Sync', ['AngularSugar']);
@@ -20,12 +23,12 @@ Sync.provider('Sync', function(){
 
    var Sync = function( $timeout, RequestModel, $http, $q, asUtility ){
       var self = this;
-
-
-      self.options = options;
       var ONLINE = 'online';
       var OFFLINE = 'offline';
-      var flushDefer;
+
+      self.options = options;
+      self.connectionStatus;
+      self.flushDefer;
 
       self.init = function(){
 
@@ -65,13 +68,14 @@ Sync.provider('Sync', function(){
 
       self.triggerFlush = function(){
 
+         console.log('Connection status', self.connectionStatus);
          if( self.flushActive || self.connectionStatus == OFFLINE ) return;
          self.flushActive = true;
 
          console.log('Triggering flush');
-         flushDefer = $q.defer();
+         self.flushDefer = $q.defer();
 
-         flushDefer.promise.then(function(){ // sync successful
+         self.flushDefer.promise.then(function(){ // sync successful
 
             console.log('Sync was successfull!');
             self.flushActive = false;
@@ -98,7 +102,7 @@ Sync.provider('Sync', function(){
 
          if(RequestModel.requests.length < 1){
             console.log('No requests to sync!');
-            flushDefer.resolve();
+            self.flushDefer.resolve();
             return;
          }
 
@@ -112,7 +116,7 @@ Sync.provider('Sync', function(){
             // the request is handled and
             // confirmed by the server so
             // we can go ahead with the next one
-            flushDefer.notify(res);
+            self.flushDefer.notify(res);
             self.flush();
             return;
 
@@ -121,7 +125,7 @@ Sync.provider('Sync', function(){
             console.log('Request could not be synced - aborting sync');
             console.log('Adding back request', request);
             RequestModel.add(request);
-            flushDefer.reject(res);
+            self.flushDefer.reject(res);
             return;
          });
       }
@@ -168,7 +172,7 @@ Sync.service('RequestModel', function(){
     * should be relatively minimal.
     */
    self.next = function(){
-      var request = self.requests.shift(request);
+      var request = self.requests.pop(request);
       console.log('Next request', request);
       self.save();
       return request;

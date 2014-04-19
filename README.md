@@ -16,6 +16,8 @@ manual - Sync only manually
          flushInterval: 9001,
          pollUrl: mywebsite.com/ping
       })
+   }).run(function(Sync){
+      Sync.init();
    });
 ```
 
