@@ -9,7 +9,7 @@ pollUrl - ping every pollInterval
 flushInterval - how often we try to sync
 manual - Sync only manually
 
-´´javascript
+```javascript
    angular.module('App').config(function(SyncProvider){
       SyncProvider.setOptions({
          pollInterval: 9001,
@@ -17,17 +17,17 @@ manual - Sync only manually
          pollUrl: mywebsite.com/ping
       })
    });
-´´
+```
 
 *Batching requests*
 
-´´javascript
+```javascript
    Sync.batch({method:'GET', url: '/some/api'});
-´´
+```
 
 *Syncing requests*
 
-´´javascript
+```javascript
    Sync.flush().then(function( status ){
       // successfull sync
    }, function( status ){
@@ -35,4 +35,4 @@ manual - Sync only manually
    }, function( progress ){
       // sync progress
    });
-´´
+```
