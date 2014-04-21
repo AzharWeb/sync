@@ -4,6 +4,32 @@
  * [ ] Notify should be an event since in auto mode we don't have a conveinient
  *     access point to get the promise
  * [ ] Way to handle error in sync
+
+   ? can we remove the poll mode and use the regular batched calls
+   to check for a connection issue as well. I can use the HTTP request manager
+   to handle the timings.
+
+   Bascially if any of the calls fail with a timeout we concider them to
+   be an indication of offline status.
+
+   Interface simplicity
+    - Add batched calls
+    - Decide when to flush them.
+
+    module.run(function(Sync){
+       var Sync.syncAuto({
+          flushTiming: 60*1000
+       });
+    });
+
+    in application...
+       Sync.syncManual() - to manually sync
+    ...
+    $rootScope.$on('Sync.SYNC_START');
+    $rootScope.$on('Sync.SYNC_END', {status}); // full sync or partial
+    $rootScope.$on('Sync.SYNC_PROGRESS', {status}); // what call was synced and what was the outcome
+
+
  */
 
 var Sync = angular.module('Sync', ['AngularSugar']);
@@ -13,146 +39,160 @@ var Sync = angular.module('Sync', ['AngularSugar']);
    Setup a poll service to check connectino and trigger batch
 
 */
-Sync.provider('Sync', function(){
-   var self = this;
-   var options = {};
+Sync.service('Sync', function($timeout, RequestModel, $http, $q, asUtility, $rootScope) {
 
-   this.setOptions = function(opt){
-      options = opt;
+   var ONLINE = 'online';
+   var OFFLINE = 'offline';
+
+   var self = this;
+   self.options;
+   self.connectionStatus;
+   self.flushDefer;
+   self.flushActive;
+   self.requests = RequestModel.requests;
+
+   self._triggerFlush = function() {
+
+      console.log('Connection status', self.connectionStatus);
+      if (self.flushActive || self.connectionStatus == OFFLINE) return;
+      self.flushActive = true;
+
+
+      console.log('Triggering flush');
+      $rootScope.$emit('Sync.START');
+      self.flushDefer = $q.defer();
+
+      self.flushDefer.promise.then(function(syncData) { // sync successful
+
+         console.log('Sync was successfull!');
+         self.flushActive = false;
+         $rootScope.$emit('Sync.END_SUCCESS', syncData);
+
+      }, function(syncData) { // sync failed
+
+         console.log('Sync could not be completed');
+         self.flushActive = false;
+         $rootScope.$emit('Sync.END_ERROR', syncData);
+
+      }, function(syncData) { // sync progress
+
+         $rootScope.$emit('Sync.PROGRESS', syncData);
+      });
+
+      self._flush();
    }
 
-   var Sync = function( $timeout, RequestModel, $http, $q, asUtility ){
-      var self = this;
-      var ONLINE = 'online';
-      var OFFLINE = 'offline';
 
-      self.options = options;
-      self.connectionStatus;
-      self.flushDefer;
 
-      self.init = function(){
+   /**
+    * Trigger all batched up requests -
+    * wait for then to return before removing them from
+    * the requests array and send them in the order
+    * they were added.
+    */
+   self._flush = function() {
 
-         /**
-          * Polls the given end point to check for
-          * connection
-          */
-         asUtility.pollFunction(function(){
-
-            return $http({
-               method: 'GET',
-               url: self.options.pollUrl
-            }).then(function(){
-
-               // here we are ok and there is a
-               // good connection
-               self.connectionStatus = ONLINE;
-
-            }, function(){
-               // now we are offline
-               self.connectionStatus = OFFLINE;
-            });
-
-         }, self.options.pollInterval);
-
-         /**
-         * Now we need to setup a flush poll
-         * to send all the batched requests
-         * after a certain timenpm i
-         */
-         asUtility.pollFunction(function(){
-            self.triggerFlush();
-         }, self.options.flushInterval);
+      if (RequestModel.requests.length < 1) {
+         console.log('No requests to sync!');
+         self.flushDefer.resolve();
+         return;
       }
 
+      // next request
+      var request = RequestModel.next();
+      console.log('Syncing request', request);
 
+      $http(request).then(function(res) {
+         console.log('Successful');
+         // the request is handled and
+         // confirmed by the server so
+         // we can go ahead with the next one
+         self.flushDefer.notify(res);
+         self._flush();
+         return;
 
-      self.triggerFlush = function(){
+      }, function(res) {
 
-         console.log('Connection status', self.connectionStatus);
-         if( self.flushActive || self.connectionStatus == OFFLINE ) return;
-         self.flushActive = true;
+         // There is an alternate strategy here
+         // that processes all calls no matter if
+         // they fail or success. Ending with
+         // all failed calls being left in the
+         // stack. The negatives with that approach
+         // being sequential accuracy - if we queue
+         // up a create -> edit / action and miss
+         // the create the two proceeding calls
+         // will fail because they are out of order.
+         console.log('Request could not be synced - aborting sync');
+         console.log('Adding back request', request);
+         RequestModel.addBack(request);
+         self.flushDefer.reject(res);
+         return;
+      });
+   }
 
-         console.log('Triggering flush');
-         self.flushDefer = $q.defer();
+   /**************************************
+    *         Public Interface
+    **************************************/
+   self.syncManual = self._triggerFlush;
+   self.setOptions = function(o){
+      self.options = o;
+   }
+   self.batch = function(request) {
+      RequestModel.add(request);
+   }
 
-         self.flushDefer.promise.then(function(){ // sync successful
-
-            console.log('Sync was successfull!');
-            self.flushActive = false;
-
-         }, function(){ // sync failed
-
-            console.log('Sync could not be completed');
-            self.flushActive = false;
-
-         }, function(){ // sync progress
-            console.log('Sync progress');
-         });
-
-         self.flush();
-      }
+   self.syncAuto = function(options) {
+      self.setOptions(options);
 
       /**
-       * Trigger all batched up requests -
-       * wait for then to return before removing them from
-       * the requests array and send them in the order
-       * they were added.
+       * Polls the given end point to check for
+       * connection
        */
-      self.flush = function(){
+      asUtility.pollFunction(function() {
 
-         if(RequestModel.requests.length < 1){
-            console.log('No requests to sync!');
-            self.flushDefer.resolve();
-            return;
-         }
+         return $http({
+            method: 'GET',
+            url: self.options.pollUrl
+         }).then(function() {
 
-         // next request
+            // here we are ok and there is a
+            // good connection
+            self.connectionStatus = ONLINE;
 
-         var request = RequestModel.next();
-         console.log('Syncing request', request);
-
-         $http(request).then(function(res){
-            console.log('Successful');
-            // the request is handled and
-            // confirmed by the server so
-            // we can go ahead with the next one
-            self.flushDefer.notify(res);
-            self.flush();
-            return;
-
-         }, function(res){
-
-            console.log('Request could not be synced - aborting sync');
-            console.log('Adding back request', request);
-            RequestModel.add(request);
-            self.flushDefer.reject(res);
-            return;
+         }, function() {
+            // now we are offline
+            self.connectionStatus = OFFLINE;
          });
-      }
 
-      self.batch = function( request ){
-         RequestModel.add(request);
-      }
-   }
+      }, self.options.pollInterval);
 
-   this.$get = function($timeout, RequestModel, $http, $q, asUtility){
-      return new Sync($timeout, RequestModel, $http, $q, asUtility);
+      /**
+       * Now we need to setup a flush poll
+       * to send all the batched requests
+       * after a certain timenpm i
+       */
+      asUtility.pollFunction(function() {
+         self._triggerFlush();
+      }, self.options.flushInterval);
    }
 });
 
 
 
-Sync.service('RequestModel', function(){
+Sync.service('RequestModel', function() {
    var self = this;
    self.requests = [];
 
    // keep track of the outgoing sync calls in
    // event of closing the app.
-   if( localStorage.requests ){
+   if (localStorage.requests) {
       self.requests = JSON.parse(localStorage.requests);
    }
 
-   self.add = function(request){
+   /**
+    * Adds a call to the end of the stack
+    */
+   self.add = function(request) {
 
       console.log('Added request', request);
       var b = self.requests.unshift(request);
@@ -160,7 +200,19 @@ Sync.service('RequestModel', function(){
       return b;
    }
 
-   self.save = function(){
+   /**
+    * Adds the requests to the top of the
+    * stack to perserve a sequence
+    */
+   self.addBack = function(request) {
+
+      console.log('Added request', request);
+      var b = self.requests.push(request);
+      self.save();
+      return b;
+   }
+
+   self.save = function() {
       localStorage.requests = JSON.stringify(self.requests);
    }
 
@@ -171,7 +223,7 @@ Sync.service('RequestModel', function(){
     * solution will miss that call. But the chance
     * should be relatively minimal.
     */
-   self.next = function(){
+   self.next = function() {
       var request = self.requests.pop(request);
       console.log('Next request', request);
       self.save();

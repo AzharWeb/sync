@@ -1,6 +1,6 @@
 describe('Sync', function() {
 
-   //console.log = function(){};
+   console.log = function(){};
    var Sync, RequestModel, $timeout, $httpBackend, $rootScope;
    var pollInterval = 1001;
    var flushInterval = 1001;
@@ -11,201 +11,250 @@ describe('Sync', function() {
       $httpBackend.flush(); // make the fake backend respond
    }
 
-   /**
-    * Main Setup
-    */
-   beforeEach(function() {
-      angular.module('Test', ['Sync']).config(function(SyncProvider) {
+   describe('Manual sync', function(){
 
-         SyncProvider.setOptions({
-            pollUrl: '/poll-url',
-            pollInterval: pollInterval,
-            flushInterval: flushInterval,
-            manual: false
+      beforeEach(function() {
+         angular.module('Test', ['Sync']).run(function(Sync){
+
+            Sync.setOptions({
+               pollUrl: '/poll-url',
+               pollInterval: pollInterval,
+               flushInterval: flushInterval
+            });
+
          });
+         module('Test');
 
-      }).run(function(Sync){
-         Sync.init();
+         // starts the module config
+         inject(function(_Sync_, _RequestModel_, _$timeout_, _$httpBackend_, _$rootScope_) {
+            $timeout = _$timeout_;
+            $rootScope = _$rootScope_;
+            $httpBackend = _$httpBackend_;
 
-      });
-      module('Test');
+            // setup fake backend
+            $httpBackend.when('GET', '/success').respond(200,'');
+            $httpBackend.when('GET', '/error').respond(500,'');
 
-      // starts the module config
-      inject(function(_Sync_, _RequestModel_, _$timeout_, _$httpBackend_, _$rootScope_) {
-         $timeout = _$timeout_;
-         $rootScope = _$rootScope_;
-         $httpBackend = _$httpBackend_;
-
-         // setup fake backend
-         $httpBackend.when('GET', '/success').respond(200,'');
-         $httpBackend.when('GET', '/error').respond(500,'');
-
-         Sync = _Sync_;
-         RequestModel = _RequestModel_;
-         $timeout = $timeout;
-      });
-   });
-
-   /**
-    * Main tear down
-    */
-   afterEach(function(){
-
-      // remove all outstanding requests
-      RequestModel.requests.length = 0;
-      RequestModel.save();
-      $httpBackend.verifyNoOutstandingExpectation();
-      $httpBackend.verifyNoOutstandingRequest();
-   });
-
-
-
-   describe('Offline actions', function(){
-
-      beforeEach(function(){
-         $httpBackend.when('GET', '/poll-url').respond(500,'');
-      })
-
-      it('Should detect offline status', function() {
-
-         $httpBackend.expect('GET', '/poll-url');
-
-         flushResponse();
-
-         expect(Sync.connectionStatus).toBe('offline');
+            Sync = _Sync_;
+            RequestModel = _RequestModel_;
+            $timeout = $timeout;
+         });
       });
 
-      it('Should not sync when in offline status', function() {
 
-         flushResponse();
+      afterEach(function(){
 
+         // remove all outstanding requests
+         RequestModel.requests.length = 0;
+         RequestModel.save();
+         $httpBackend.verifyNoOutstandingExpectation();
+         $httpBackend.verifyNoOutstandingRequest();
+      });
+
+      it('Should do manual sync and never auto sync', function(){
+
+         // trigger online
          Sync.batch({url:'/success', method:'GET'});
+         Sync.syncManual();
 
-         flushResponse();
-         expect(RequestModel.requests.length).toBe(1);
-      });
+         $httpBackend.flush(); // make the fake backend respond
+
+         expect(Sync.requests.length).toBe(0);
+      })
 
    })
 
 
-   describe('Online actions', function(){
+   describe('Automatic sync', function(){
 
-      beforeEach(function(){
-         $httpBackend.when('GET', '/poll-url').respond(200,'');
-      })
 
-      it('Should set polltimings according to the options', function() {
+      /**
+       * Main Setup
+       */
+      beforeEach(function() {
+         angular.module('Test', ['Sync']).run(function(Sync){
 
-         expect(Sync.options.pollInterval).toBe(pollInterval);
-         expect(Sync.options.flushInterval).toBe(flushInterval);
-         expect(Sync.options.pollUrl).toBe('/poll-url');
+            Sync.syncAuto({
+               pollUrl: '/poll-url',
+               pollInterval: pollInterval,
+               flushInterval: flushInterval,
+               manual: false
+            });
+
+         });
+         module('Test');
+
+         // starts the module config
+         inject(function(_Sync_, _RequestModel_, _$timeout_, _$httpBackend_, _$rootScope_) {
+            $timeout = _$timeout_;
+            $rootScope = _$rootScope_;
+            $httpBackend = _$httpBackend_;
+
+            // setup fake backend
+            $httpBackend.when('GET', '/success').respond(200,'');
+            $httpBackend.when('GET', '/error').respond(500,'');
+
+            Sync = _Sync_;
+            RequestModel = _RequestModel_;
+            $timeout = $timeout;
+         });
       });
 
-      it('Should add batched calls to the request stack', function() {
+      /**
+       * Main tear down
+       */
+      afterEach(function(){
 
-         Sync.batch({url:'/success', method:'GET'});
-         expect(RequestModel.requests.length).toBe(1);
-      });
-
-      it('Should detect online status', function() {
-
-         $httpBackend.expect('GET', '/poll-url');
-
-         flushResponse();
-
-         expect(Sync.connectionStatus).toBe('online');
+         // remove all outstanding requests
+         RequestModel.requests.length = 0;
+         RequestModel.save();
+         $httpBackend.verifyNoOutstandingExpectation();
+         $httpBackend.verifyNoOutstandingRequest();
       });
 
 
-      it('Should remove validated calls from the request stack', function() {
-         $httpBackend.expect('GET', '/success');
 
+      describe('Offline actions', function(){
 
-         // setup the batched call
-         Sync.batch({url:'/success', method:'GET'});
-         Sync.batch({url:'/success', method:'GET'});
-         expect(RequestModel.requests.length).toBe(2);
+         beforeEach(function(){
+            $httpBackend.when('GET', '/poll-url').respond(500,'');
+         })
 
-         flushResponse();
+         it('Should detect offline status', function() {
 
-         expect(RequestModel.requests.length).toBe(0);
-      });
+            $httpBackend.expect('GET', '/poll-url');
 
-      it('Should add back error calls to the request stack', function() {
+            flushResponse();
 
-         $httpBackend.expect('GET', '/error');
-         Sync.batch({url:'/error', method:'GET'});
-         expect(RequestModel.requests.length).toBe(1);
-
-         flushResponse();
-
-         expect(RequestModel.requests.length).toBe(1);
-      });
-
-      it('Should store the reqeust stack for persistant storage', function() {
-
-         Sync.batch({url:'/error', method:'GET'});
-         Sync.batch({url:'/error', method:'GET'});
-
-         $rootScope.$digest();
-         var requests = JSON.parse(localStorage.requests);
-         expect(requests.length).toBe(2);
-      });
-
-      it('Should notify about the progress of the sync', function() {
-         var notified = false;
-
-         Sync.batch({url:'/success', method:'GET'});
-
-         $timeout.flush(); // trigger the timer - this enables the promise
-
-         Sync.flushDefer.promise.then( function(){
-
-         }, function(){
-
-         }, function(){
-            notified = true;
+            expect(Sync.connectionStatus).toBe('offline');
          });
 
-         flushResponse();
+         it('Should not sync when in offline status', function() {
 
-         expect(notified).toBe(true);
-      });
+            flushResponse();
 
-      it('Should sync the requests in the order they was added', function() {
-         flushResponse();
+            Sync.batch({url:'/success', method:'GET'});
 
-         Sync.batch({url:'/success', method:'GET'});
-         Sync.batch({url:'/success', method:'GET'});
-         Sync.batch({url:'/success', method:'GET'});
-         Sync.batch({url:'/error', method:'GET'});
+            flushResponse();
+            expect(Sync.requests.length).toBe(1);
+         });
 
-         flushResponse();
-         flushResponse();
-         flushResponse();
-         flushResponse();
+      })
 
-         expect(RequestModel.requests.length).toBe(1);
-      });
 
-      iit('Should attempt to sync all calls and leave the failed ones still in the stack', function() {
+      describe('Online actions', function(){
 
-         // go activate online mode
-         flushResponse();
+         beforeEach(function(){
+            $httpBackend.when('GET', '/poll-url').respond(200,'');
+         })
 
-         Sync.batch({url:'/success', method:'GET'});
-         Sync.batch({url:'/success', method:'GET'});
-         Sync.batch({url:'/error', method:'GET'});
-         Sync.batch({url:'/error', method:'GET'});
-         Sync.batch({url:'/success', method:'GET'});
+         it('Should set polltimings according to the options', function() {
 
-         flushResponse();
+            expect(Sync.options.pollInterval).toBe(pollInterval);
+            expect(Sync.options.flushInterval).toBe(flushInterval);
+            expect(Sync.options.pollUrl).toBe('/poll-url');
+         });
 
-         expect(RequestModel.requests.length).toBe(2);
+         it('Should add batched calls to the request stack', function() {
+
+            Sync.batch({url:'/success', method:'GET'});
+            expect(Sync.requests.length).toBe(1);
+         });
+
+         it('Should detect online status', function() {
+
+            $httpBackend.expect('GET', '/poll-url');
+
+            flushResponse();
+
+            expect(Sync.connectionStatus).toBe('online');
+         });
+
+
+         it('Should remove validated calls from the request stack', function() {
+            $httpBackend.expect('GET', '/success');
+
+
+            // setup the batched call
+            Sync.batch({url:'/success', method:'GET'});
+            Sync.batch({url:'/success', method:'GET'});
+            expect(Sync.requests.length).toBe(2);
+
+            flushResponse();
+
+            expect(Sync.requests.length).toBe(0);
+         });
+
+         it('Should add back error calls to the request stack', function() {
+
+            $httpBackend.expect('GET', '/error');
+            Sync.batch({url:'/error', method:'GET'});
+            expect(RequestModel.requests.length).toBe(1);
+
+            flushResponse();
+
+            expect(Sync.requests.length).toBe(1);
+         });
+
+         it('Should store the reqeust stack for persistant storage', function() {
+
+            Sync.batch({url:'/error', method:'GET'});
+            Sync.batch({url:'/error', method:'GET'});
+
+            $rootScope.$digest();
+            var requests = JSON.parse(localStorage.requests);
+            expect(requests.length).toBe(2);
+         });
+
+         it('Should notify about the progress of the sync', function() {
+            var notified = false;
+
+            Sync.batch({url:'/success', method:'GET'});
+
+            $timeout.flush(); // trigger the timer - this enables the promise
+
+            Sync.flushDefer.promise.then( function(){
+
+            }, function(){
+
+            }, function(){
+               notified = true;
+            });
+
+            flushResponse();
+
+            expect(notified).toBe(true);
+         });
+
+         it('Should sync the requests in the order they was added', function() {
+            flushResponse();
+
+            Sync.batch({url:'/success', method:'GET'});
+            Sync.batch({url:'/success', method:'GET'});
+            Sync.batch({url:'/success', method:'GET'});
+            Sync.batch({url:'/error', method:'GET'});
+
+            flushResponse();
+
+            expect(Sync.requests.length).toBe(1);
+         });
+
+            it('Should attempt to sync all calls and leave the failed ones still in the stack', function() {
+
+            // go activate online mode
+            flushResponse();
+
+            Sync.batch({url:'/success', method:'GET'});
+            Sync.batch({url:'/success', method:'GET'});
+            Sync.batch({url:'/error', method:'GET'});
+            Sync.batch({url:'/error', method:'GET'});
+            Sync.batch({url:'/success', method:'GET'});
+
+            flushResponse();
+
+            expect(Sync.requests.length).toBe(3);
+         });
       });
    });
-
-
-
 
 })
