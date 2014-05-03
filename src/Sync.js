@@ -32,31 +32,28 @@
 
  */
 
-var Sync = angular.module('Sync', ['AngularSugar']);
+angular.module('Sync', ['AngularSugar'])
 
+.constant('SyncOptions', {
+   flushInterval: 9001,
+   downSync: false
+})
 /*
 
    Setup a poll service to check connectino and trigger batch
 
 */
-Sync.service('Sync', function($timeout, RequestModel, $http, $q, asUtility, $rootScope) {
-
-   var ONLINE = 'online';
-   var OFFLINE = 'offline';
+.service('Sync', function Sync($timeout, RequestModel, $http, $q, asUtility, $rootScope, SyncOptions) {
 
    var self = this;
-   self.options;
-   self.connectionStatus;
    self.flushDefer;
    self.flushActive;
    self.requests = RequestModel.requests;
 
    self._triggerFlush = function() {
 
-      console.log('Connection status', self.connectionStatus);
-      if (self.flushActive || self.connectionStatus == OFFLINE) return;
+      if (self.flushActive) return;
       self.flushActive = true;
-
 
       console.log('Triggering flush');
       $rootScope.$emit('Sync.START');
@@ -104,11 +101,26 @@ Sync.service('Sync', function($timeout, RequestModel, $http, $q, asUtility, $roo
 
       $http(request).then(function(res) {
          console.log('Successful');
+
          // the request is handled and
          // confirmed by the server so
          // we can go ahead with the next one
          self.flushDefer.notify(res);
          self._flush();
+
+         if( SyncOptions.downSyc ){
+            $http({
+               url: SyncOptions.downSync,
+               method:'GET',
+               timeout: 
+            })
+               .then(function(resp){
+                  $rootScope.$emit('Sync.DOWNSYNC_COMPLETE');
+               }, function(){
+                  $rootScope.$emit('Sync.DOWNSYNC_FAILED');
+               });
+         }
+
          return;
 
       }, function(res) {
@@ -134,52 +146,26 @@ Sync.service('Sync', function($timeout, RequestModel, $http, $q, asUtility, $roo
     *         Public Interface
     **************************************/
    self.syncManual = self._triggerFlush;
-   self.setOptions = function(o){
-      self.options = o;
-   }
+
    self.batch = function(request) {
       RequestModel.add(request);
    }
 
-   self.syncAuto = function(options) {
-      self.setOptions(options);
-
-      /**
-       * Polls the given end point to check for
-       * connection
-       */
-      asUtility.pollFunction(function() {
-
-         return $http({
-            method: 'GET',
-            url: self.options.pollUrl
-         }).then(function() {
-
-            // here we are ok and there is a
-            // good connection
-            self.connectionStatus = ONLINE;
-
-         }, function() {
-            // now we are offline
-            self.connectionStatus = OFFLINE;
-         });
-
-      }, self.options.pollInterval);
+   self.syncAuto = function() {
 
       /**
        * Now we need to setup a flush poll
        * to send all the batched requests
-       * after a certain timenpm i
        */
       asUtility.pollFunction(function() {
          self._triggerFlush();
-      }, self.options.flushInterval);
+      }, SyncOptions.flushInterval);
    }
-});
+})
 
 
 
-Sync.service('RequestModel', function() {
+.service('RequestModel', function RequestModel() {
    var self = this;
    self.requests = [];
 
@@ -229,4 +215,4 @@ Sync.service('RequestModel', function() {
       self.save();
       return request;
    }
-});
+})

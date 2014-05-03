@@ -1,8 +1,7 @@
 describe('Sync', function() {
 
    console.log = function(){};
-   var Sync, RequestModel, $timeout, $httpBackend, $rootScope;
-   var pollInterval = 1001;
+   var Sync, RequestModel, $timeout, $httpBackend, $rootScope, SyncOptions;
    var flushInterval = 1001;
 
    function flushResponse(){
@@ -14,19 +13,17 @@ describe('Sync', function() {
    describe('Manual sync', function(){
 
       beforeEach(function() {
-         angular.module('Test', ['Sync']).run(function(Sync){
+         angular.module('Test', ['Sync']).run(function(Sync, SyncOptions){
 
-            Sync.setOptions({
-               pollUrl: '/poll-url',
-               pollInterval: pollInterval,
+            SyncOptions = {
                flushInterval: flushInterval
-            });
+            };
 
          });
          module('Test');
 
          // starts the module config
-         inject(function(_Sync_, _RequestModel_, _$timeout_, _$httpBackend_, _$rootScope_) {
+         inject(function(_Sync_, _SyncOptions_, _RequestModel_, _$timeout_, _$httpBackend_, _$rootScope_) {
             $timeout = _$timeout_;
             $rootScope = _$rootScope_;
             $httpBackend = _$httpBackend_;
@@ -36,6 +33,7 @@ describe('Sync', function() {
             $httpBackend.when('GET', '/error').respond(500,'');
 
             Sync = _Sync_;
+            SyncOptions = _SyncOptions_
             RequestModel = _RequestModel_;
             $timeout = $timeout;
          });
@@ -74,12 +72,7 @@ describe('Sync', function() {
       beforeEach(function() {
          angular.module('Test', ['Sync']).run(function(Sync){
 
-            Sync.syncAuto({
-               pollUrl: '/poll-url',
-               pollInterval: pollInterval,
-               flushInterval: flushInterval,
-               manual: false
-            });
+            Sync.syncAuto();
 
          });
          module('Test');
@@ -113,7 +106,13 @@ describe('Sync', function() {
       });
 
 
-
+      /**
+       * Slight bit of overarchitecting here
+       * I don't think the offline mode
+       * serves a purpose. It's just to save the attempt
+       * at a sync (which is not expensive) but at the cost
+       * of added complexity to the API.
+       *
       describe('Offline actions', function(){
 
          beforeEach(function(){
@@ -140,34 +139,27 @@ describe('Sync', function() {
          });
 
       })
-
+**/
 
       describe('Online actions', function(){
 
          beforeEach(function(){
+            SyncOptions = {
+               flushInterval: flushInterval
+            }
             $httpBackend.when('GET', '/poll-url').respond(200,'');
          })
 
          it('Should set polltimings according to the options', function() {
 
-            expect(Sync.options.pollInterval).toBe(pollInterval);
-            expect(Sync.options.flushInterval).toBe(flushInterval);
-            expect(Sync.options.pollUrl).toBe('/poll-url');
+
+            expect(SyncOptions.flushInterval).toBe(flushInterval);
          });
 
          it('Should add batched calls to the request stack', function() {
 
             Sync.batch({url:'/success', method:'GET'});
             expect(Sync.requests.length).toBe(1);
-         });
-
-         it('Should detect online status', function() {
-
-            $httpBackend.expect('GET', '/poll-url');
-
-            flushResponse();
-
-            expect(Sync.connectionStatus).toBe('online');
          });
 
 
@@ -185,7 +177,7 @@ describe('Sync', function() {
             expect(Sync.requests.length).toBe(0);
          });
 
-         it('Should add back error calls to the request stack', function() {
+         it('Should add back error calls to the request stack if they fail', function() {
 
             $httpBackend.expect('GET', '/error');
             Sync.batch({url:'/error', method:'GET'});
@@ -227,7 +219,6 @@ describe('Sync', function() {
          });
 
          it('Should sync the requests in the order they was added', function() {
-            flushResponse();
 
             Sync.batch({url:'/success', method:'GET'});
             Sync.batch({url:'/success', method:'GET'});
@@ -239,10 +230,7 @@ describe('Sync', function() {
             expect(Sync.requests.length).toBe(1);
          });
 
-            it('Should attempt to sync all calls and leave the failed ones still in the stack', function() {
-
-            // go activate online mode
-            flushResponse();
+         it('Should stop sync cycle and add back the last request if a request fails.', function() {
 
             Sync.batch({url:'/success', method:'GET'});
             Sync.batch({url:'/success', method:'GET'});
@@ -254,6 +242,57 @@ describe('Sync', function() {
 
             expect(Sync.requests.length).toBe(3);
          });
+
+         describe('DownSync', function(){
+            beforeEach(function(){
+
+               var data = {
+                  foo:'bar'
+               };
+               SyncOptions.downSync = '/downsync';
+               $httpBackend.when('GET', '/downsync').respond(200, data);
+            });
+
+            it('Should trigger the downSync after a successfull flush.', function() {
+
+               $httpBackend.expect('GET', '/downsync');
+
+               Sync.batch({url:'/success', method:'GET'});
+               Sync.batch({url:'/success', method:'GET'});
+               Sync.batch({url:'/success', method:'GET'});
+
+               flushResponse();
+
+            });
+
+            it('Should cancel the downSync if there are any new batched requests.', function() {
+
+               spyOn($rootScope, '$emit');
+               Sync.batch({url:'/success', method:'GET'});
+               Sync.batch({url:'/error', method:'GET'});
+               Sync.batch({url:'/success', method:'GET'});
+
+               flushResponse();
+
+               // check if the data is set in the event properly
+               expect(scope.$emit).toHaveBeenCalledWith("Sync.DOWNSYNC_CANCELLED", data);
+               expect(Sync.requests.length).toBe(2);
+            });
+
+            it('Should trigger a Sync.DONWSYNC_COMPLETE event when the downsync is ready to be merged.', function() {
+
+               spyOn($rootScope, '$emit');
+               Sync.batch({url:'/success', method:'GET'});
+               Sync.batch({url:'/success', method:'GET'});
+               Sync.batch({url:'/success', method:'GET'});
+
+               flushResponse();
+
+               // check if the data is set in the event properly
+               expect(scope.$emit).toHaveBeenCalledWith("Sync.DOWNSYNC_COMPLETE", data);
+            });
+         });
+
       });
    });
 
