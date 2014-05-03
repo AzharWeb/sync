@@ -6,7 +6,7 @@ Service to batch up offline requests and sync them with a server when possible.
 
 ## Install ##
 ```
-bower install https://github.com/Haemp/sync
+bower install Haemp/sync
 ```
 
 ## Configure ##

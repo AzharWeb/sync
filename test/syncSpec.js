@@ -53,7 +53,7 @@ describe('Sync', function() {
 
       it('Should do manual sync and never auto sync', function(){
 
-         // trigger online
+
          Sync.batch({url:'/success', method:'GET'});
          Sync.syncManual();
 
@@ -106,42 +106,6 @@ describe('Sync', function() {
          $httpBackend.verifyNoOutstandingExpectation();
          //$httpBackend.verifyNoOutstandingRequest();
       });
-
-
-      /**
-       * Slight bit of overarchitecting here
-       * I don't think the offline mode
-       * serves a purpose. It's just to save the attempt
-       * at a sync (which is not expensive) but at the cost
-       * of added complexity to the API.
-       *
-      describe('Offline actions', function(){
-
-         beforeEach(function(){
-            $httpBackend.when('GET', '/poll-url').respond(500,'');
-         })
-
-         it('Should detect offline status', function() {
-
-            $httpBackend.expect('GET', '/poll-url');
-
-            flushResponse();
-
-            expect(Sync.connectionStatus).toBe('offline');
-         });
-
-         it('Should not sync when in offline status', function() {
-
-            flushResponse();
-
-            Sync.batch({url:'/success', method:'GET'});
-
-            flushResponse();
-            expect(Sync.requests.length).toBe(1);
-         });
-
-      })
-**/
 
       describe('Online actions', function(){
 
