@@ -1,0 +1,1 @@
+data: undefined, status: 0, headers: function (name) { ... }, config: Object{method: 'GET', transformRequest: [...], transformResponse: [...], url: '/downsync', timeout: Object{then: ..., catch: ..., finally: ...}, headers: Object{Accept: ...}}, statusText: undefined}

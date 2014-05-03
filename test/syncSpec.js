@@ -2,6 +2,9 @@ describe('Sync', function() {
 
    console.log = function(){};
    var Sync, RequestModel, $timeout, $httpBackend, $rootScope, SyncOptions;
+   var downSyncData = {
+      foo:'bar'
+   };
    var flushInterval = 1001;
 
    function flushResponse(){
@@ -14,11 +17,10 @@ describe('Sync', function() {
 
       beforeEach(function() {
          angular.module('Test', ['Sync']).run(function(Sync, SyncOptions){
-
-            SyncOptions = {
-               flushInterval: flushInterval
-            };
-
+            console.log(
+               'Default sync options', SyncOptions
+            );
+            SyncOptions.flushInterval = flushInterval;
          });
          module('Test');
 
@@ -70,15 +72,14 @@ describe('Sync', function() {
        * Main Setup
        */
       beforeEach(function() {
-         angular.module('Test', ['Sync']).run(function(Sync){
-
+         angular.module('Test', ['Sync']).run(function(Sync, SyncOptions){
             Sync.syncAuto();
-
+            SyncOptions.flushInterval = flushInterval;
          });
          module('Test');
 
          // starts the module config
-         inject(function(_Sync_, _RequestModel_, _$timeout_, _$httpBackend_, _$rootScope_) {
+         inject(function(_Sync_, _SyncOptions_, _RequestModel_, _$timeout_, _$httpBackend_, _$rootScope_) {
             $timeout = _$timeout_;
             $rootScope = _$rootScope_;
             $httpBackend = _$httpBackend_;
@@ -88,6 +89,7 @@ describe('Sync', function() {
             $httpBackend.when('GET', '/error').respond(500,'');
 
             Sync = _Sync_;
+            SyncOptions = _SyncOptions_;
             RequestModel = _RequestModel_;
             $timeout = $timeout;
          });
@@ -102,7 +104,7 @@ describe('Sync', function() {
          RequestModel.requests.length = 0;
          RequestModel.save();
          $httpBackend.verifyNoOutstandingExpectation();
-         $httpBackend.verifyNoOutstandingRequest();
+         //$httpBackend.verifyNoOutstandingRequest();
       });
 
 
@@ -144,9 +146,7 @@ describe('Sync', function() {
       describe('Online actions', function(){
 
          beforeEach(function(){
-            SyncOptions = {
-               flushInterval: flushInterval
-            }
+            SyncOptions.flushInterval = flushInterval;
             $httpBackend.when('GET', '/poll-url').respond(200,'');
          })
 
@@ -246,14 +246,15 @@ describe('Sync', function() {
          describe('DownSync', function(){
             beforeEach(function(){
 
-               var data = {
-                  foo:'bar'
-               };
+
                SyncOptions.downSync = '/downsync';
-               $httpBackend.when('GET', '/downsync').respond(200, data);
+               $httpBackend.when('GET', '/downsync').respond(200, downSyncData);
+               $httpBackend.when('GET', '/downsync/progress').respond(200, downSyncData);
+               $httpBackend.when('GET', '/downsync/err').respond(500);
             });
 
             it('Should trigger the downSync after a successfull flush.', function() {
+
 
                $httpBackend.expect('GET', '/downsync');
 
@@ -267,17 +268,25 @@ describe('Sync', function() {
 
             it('Should cancel the downSync if there are any new batched requests.', function() {
 
+               $httpBackend.expect('GET', '/downsync');
                spyOn($rootScope, '$emit');
                Sync.batch({url:'/success', method:'GET'});
-               Sync.batch({url:'/error', method:'GET'});
+               Sync.batch({url:'/success', method:'GET'});
                Sync.batch({url:'/success', method:'GET'});
 
-               flushResponse();
+               $timeout.flush(); // trigger the timer
+               $httpBackend.flush(3); // make the fake backend respond
+               $rootScope.$apply(); // trigger a digest
+
+               // add another batched request
+               // this should cancel the down sync
+               Sync.batch({url:'/success', method:'GET'});
+               $rootScope.$apply(); // trigger a digest
 
                // check if the data is set in the event properly
-               expect(scope.$emit).toHaveBeenCalledWith("Sync.DOWNSYNC_CANCELLED", data);
-               expect(Sync.requests.length).toBe(2);
+               expect($rootScope.$emit.mostRecentCall.args[0] == "Sync.DOWNSYNC_CANCELLED").toBeTruthy()
             });
+
 
             it('Should trigger a Sync.DONWSYNC_COMPLETE event when the downsync is ready to be merged.', function() {
 
@@ -289,7 +298,22 @@ describe('Sync', function() {
                flushResponse();
 
                // check if the data is set in the event properly
-               expect(scope.$emit).toHaveBeenCalledWith("Sync.DOWNSYNC_COMPLETE", data);
+               expect($rootScope.$emit).toHaveBeenCalledWith("Sync.DOWNSYNC_COMPLETE", downSyncData);
+            });
+
+            it('Should trigger a Sync.DONWSYNC_FAILED event iuf the downsync is failed.', function() {
+
+               SyncOptions.downSync = '/downsync/err';
+               spyOn($rootScope, '$emit');
+               Sync.batch({url:'/success', method:'GET'});
+               Sync.batch({url:'/success', method:'GET'});
+               Sync.batch({url:'/success', method:'GET'});
+
+               flushResponse();
+
+               // check if the data is set in the event properly
+               expect($rootScope.$emit.mostRecentCall.args[0] == 'Sync.DOWNSYNC_FAILED').toBeTruthy()
+
             });
          });
 

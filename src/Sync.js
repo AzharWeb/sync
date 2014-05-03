@@ -34,9 +34,10 @@
 
 angular.module('Sync', ['AngularSugar'])
 
-.constant('SyncOptions', {
-   flushInterval: 9001,
-   downSync: false
+.service('SyncOptions', function(){
+   var self = this;
+   self.flushInterval = 9001;
+   self.downSync = false;
 })
 /*
 
@@ -49,7 +50,7 @@ angular.module('Sync', ['AngularSugar'])
    self.flushDefer;
    self.flushActive;
    self.requests = RequestModel.requests;
-
+   var CANCELLED = 0;
    self._triggerFlush = function() {
 
       if (self.flushActive) return;
@@ -64,6 +65,51 @@ angular.module('Sync', ['AngularSugar'])
          console.log('Sync was successfull!');
          self.flushActive = false;
          $rootScope.$emit('Sync.END_SUCCESS', syncData);
+
+         // // downsync attempts to pull down
+         // // a new fresh version of data
+         // // from the server to replace
+         // // or ammend the current one
+         console.log('Real sync options', SyncOptions);
+         if( SyncOptions.downSync ){
+
+            console.log('Starting downsync...');
+            // watch for changes in the request buffer
+            // while we down sync. If there is any queued
+            // up in the process we need to cancel it
+            self.downSyncWatcher = $rootScope.$watch(function(){
+               return RequestModel.requests.length;
+            }, function( newValue, oldValue ){
+               if( newValue != oldValue ){
+                  self._cancelDownSync();
+                  self.downSyncWatcher(); // remove watcher
+               }
+            });
+
+            // cancel mechanism
+            self.downSyncDefer = $q.defer();
+
+            // attempt downsync
+            $http({
+               url: SyncOptions.downSync,
+               method:'GET',
+               timeout: self.downSyncDefer.promise.then(function(resp){
+                  console.log('Donwsync cancelled', resp);
+                  $rootScope.$emit('Sync.DOWNSYNC_CANCELLED', resp);
+
+                  return resp;
+               })
+            })
+               .then(function(resp){
+                  console.log('Donwsync complete!');
+                  $rootScope.$emit('Sync.DOWNSYNC_COMPLETE', resp.data);
+               }, function(resp){
+                  if( resp.status === CANCELLED ) return;
+
+                  console.log('Donwsync failed at the endpoint');
+                  $rootScope.$emit('Sync.DOWNSYNC_FAILED');
+               });
+         }
 
       }, function(syncData) { // sync failed
 
@@ -108,19 +154,6 @@ angular.module('Sync', ['AngularSugar'])
          self.flushDefer.notify(res);
          self._flush();
 
-         if( SyncOptions.downSyc ){
-            $http({
-               url: SyncOptions.downSync,
-               method:'GET',
-               timeout: 
-            })
-               .then(function(resp){
-                  $rootScope.$emit('Sync.DOWNSYNC_COMPLETE');
-               }, function(){
-                  $rootScope.$emit('Sync.DOWNSYNC_FAILED');
-               });
-         }
-
          return;
 
       }, function(res) {
@@ -140,6 +173,11 @@ angular.module('Sync', ['AngularSugar'])
          self.flushDefer.reject(res);
          return;
       });
+   }
+
+   self._cancelDownSync = function(){
+      if( self.downSyncDefer )
+         self.downSyncDefer.resolve({status:'cancelled'});
    }
 
    /**************************************
