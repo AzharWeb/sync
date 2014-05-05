@@ -142,7 +142,7 @@ angular.module('Sync', ['AngularSugar'])
       }
 
       // next request
-      var request = RequestModel.next();
+      var request = RequestModel.peakNext();
       console.log('Syncing request', request);
 
       $http(request).then(function(res) {
@@ -151,9 +151,10 @@ angular.module('Sync', ['AngularSugar'])
          // the request is handled and
          // confirmed by the server so
          // we can go ahead with the next one
+         console.log('### Validating...', RequestModel.validateNext());
+         console.log('### Requests left: ',RequestModel.requests);
          self.flushDefer.notify(res);
          self._flush();
-
          return;
 
       }, function(res) {
@@ -168,8 +169,7 @@ angular.module('Sync', ['AngularSugar'])
          // the create the two proceeding calls
          // will fail because they are out of order.
          console.log('Request could not be synced - aborting sync');
-         console.log('Adding back request', request);
-         RequestModel.addBack(request);
+         console.log('### Requests left: ',RequestModel.requests);
          self.flushDefer.reject(res);
          return;
       });
@@ -241,16 +241,16 @@ angular.module('Sync', ['AngularSugar'])
    }
 
    /**
-    * There is a potentail risk of the system
-    * being synced - a call fails and after the
-    * fail status the app shuts down - this
-    * solution will miss that call. But the chance
-    * should be relatively minimal.
+    *
     */
-   self.next = function() {
-      var request = self.requests.pop(request);
+   self.peakNext = function() {
+      var request = self.requests[self.requests.length - 1];
       console.log('Next request', request);
-      self.save();
       return request;
+   }
+
+   self.validateNext = function(){
+      return self.requests.pop();
+      self.save();
    }
 })

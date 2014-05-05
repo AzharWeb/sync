@@ -141,13 +141,27 @@ describe('Sync', function() {
             expect(Sync.requests.length).toBe(0);
          });
 
-         it('Should add back error calls to the request stack if they fail', function() {
+         it('Should not remove calls from the stack if they fail', function() {
 
             $httpBackend.expect('GET', '/error');
             Sync.batch({url:'/error', method:'GET'});
             expect(RequestModel.requests.length).toBe(1);
 
             flushResponse();
+
+            expect(Sync.requests.length).toBe(1);
+         });
+
+         it('Should not remove calls from the stack until they are validated', function() {
+
+            $httpBackend.expect('GET', '/success');
+            Sync.batch({url:'/success', method:'GET'});
+
+            expect(RequestModel.requests.length).toBe(1);
+
+            // the call is now hanging
+            $timeout.flush(); // trigger the timer
+            $rootScope.$apply(); // trigger a digest
 
             expect(Sync.requests.length).toBe(1);
          });
@@ -184,7 +198,6 @@ describe('Sync', function() {
 
          it('Should sync the requests in the order they was added', function() {
 
-            Sync.batch({url:'/success', method:'GET'});
             Sync.batch({url:'/success', method:'GET'});
             Sync.batch({url:'/success', method:'GET'});
             Sync.batch({url:'/error', method:'GET'});
