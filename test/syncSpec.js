@@ -114,7 +114,7 @@ describe('Sync', function() {
             $httpBackend.when('GET', '/poll-url').respond(200,'');
          })
 
-         it('Should set polltimings according to the options', function() {
+         it('Should set flush timings according to the options', function() {
 
 
             expect(SyncOptions.flushInterval).toBe(flushInterval);
@@ -141,15 +141,41 @@ describe('Sync', function() {
             expect(Sync.requests.length).toBe(0);
          });
 
-         it('Should not remove calls from the stack if they fail', function() {
+         it('Should not remove calls from the stack if they fail from 401 or timeout', function() {
 
-            $httpBackend.expect('GET', '/error');
-            Sync.batch({url:'/error', method:'GET'});
+            $httpBackend.expect('GET', '/no-response');
+            $httpBackend.expect('GET', '/401');
+
+            Sync.batch({url:'/timeout', method:'GET'});
+            expect(RequestModel.requests.length).toBe(1);
+            flushResponse();
+            expect(Sync.requests.length).toBe(1);
+
+            Sync.batch({url:'/401', method:'GET'});
+            expect(RequestModel.requests.length).toBe(2);
+            flushResponse();
+            expect(Sync.requests.length).toBe(2);
+         });
+
+         it('Should remove calls from the stack and notify the user if they 500 fail', function() {
+
+            $httpBackend.expect('GET', '/corrupt-call').respond(500, 'Waaaa, this is a corrupt call');
+
+            Sync.batch({url:'/corrupt-call', method:'GET'});
+
+            // verify the batched call
             expect(RequestModel.requests.length).toBe(1);
 
-            flushResponse();
+            // trigger flush
+            $timeout.flush(); // trigger the timer
+            $rootScope.$apply(); // trigger a digest
+            spyOn(Sync.flushDefer, 'notify');
+            $httpBackend.flush();
 
-            expect(Sync.requests.length).toBe(1);
+            // verify that the corrupt call now
+            // is not stuck
+            expect(Sync.requests.length).toBe(0);
+            expect(Sync.flushDefer.notify.mostRecentCall.args[0].status).toBe('error');
          });
 
          it('Should not remove calls from the stack until they are validated', function() {

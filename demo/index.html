@@ -1,11 +1,31 @@
 <html>
    <head>
       <title>Angular Sync Demo</title>
-      <script type="text/javascript" src="/bower_components/angular/angular.js" ></script>
+      <script type="text/javascript" src="bower_components/angular/angular.js" ></script>
+      <script type="text/javascript" src="bower_components/AngularSugar/AngularSugar.js" ></script>
       <script type="text/javascript" src="../src/Sync.js" ></script>
       <script type="text/javascript" src="Demo.js" ></script>
    </head>
-   <body>
+   <body ng-app="Demo" ng-controller="DemoCtrl">
+      
+      <input type="text" ng-model="newRequest.method">
+      <input type="text" ng-model="newRequest.url">
+      <input type="text" ng-model="newRequest.data">
+      <button ng-click="batch(newRequest)">Batch</button>
 
+      <h2>Request buffer</h2>
+      <ul>
+         <li ng-repeat="request in RequestModel.requests">
+            {{ request.method }} {{ request.url }} {{ request.data }}
+         </li>
+      </ul>
+      <button ng-click="flush()">Flush</button>
+
+      <h2>Down sync data</h2>
+      <div>
+         {{ downsync.data }}
+      </div>
+      
+      <button ng-click="clearAll()">Clear All</button>
    </body>
 </html>

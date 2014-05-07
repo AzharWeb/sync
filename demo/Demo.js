@@ -5,13 +5,19 @@ angular.module('Demo', ['Sync'])
 
 })
 
-.controller('DemoCtrl', function(Sync){
+.controller('DemoCtrl', function($scope, Sync, RequestModel){
+   $scope.RequestModel = RequestModel;
+   $scope.flush = function(){
+      Sync.syncManual();
+   }
 
-   $scope.batchPost = function( url ){
-      Sync.batch({
-         url: 'localhost:3000',
-         method: 'POST',
-         data: { name: 'Foo', id: 1234, createdAt: Date.now() }
-      });
+   $scope.clearAll = Sync.clearAll;
+
+   $scope.batch = function( req ){
+      req.withCredentials = true;
+      req.url = 'http://localhost:3000' + req.url;
+      req.data = angular.copy(JSON.parse(req.data));
+      Sync.batch(req);
+      $scope.newRequest = undefined;
    }
 });

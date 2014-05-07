@@ -153,24 +153,31 @@ angular.module('Sync', ['AngularSugar'])
          // we can go ahead with the next one
          console.log('### Validating...', RequestModel.validateNext());
          console.log('### Requests left: ',RequestModel.requests);
-         self.flushDefer.notify(res);
+         self.flushDefer.notify({req: request, res: res, status:'success'});
          self._flush();
          return;
 
       }, function(res) {
 
-         // There is an alternate strategy here
-         // that processes all calls no matter if
-         // they fail or success. Ending with
-         // all failed calls being left in the
-         // stack. The negatives with that approach
-         // being sequential accuracy - if we queue
-         // up a create -> edit / action and miss
-         // the create the two proceeding calls
-         // will fail because they are out of order.
-         console.log('Request could not be synced - aborting sync');
-         console.log('### Requests left: ',RequestModel.requests);
-         self.flushDefer.reject(res);
+         if(res.status == 401 || res.status == 0){
+
+            // here we stop - because something is
+            // wrong with the state of the application
+            // either needs to be connected or authorized
+            console.log('Request could not be synced - aborting sync');
+            console.log('### Requests left: ',RequestModel.requests);
+            self.flushDefer.reject(res);
+
+         }else{
+
+            // it's a corrupted call that we pass on
+            // through (to avoid the throttle problem)
+            // but notify the user that a call was
+            // abandoned
+            self.flushDefer.notify({req: request, res: res, status:'error'});
+            RequestModel.validateNext();
+         }
+
          return;
       });
    }
@@ -187,6 +194,10 @@ angular.module('Sync', ['AngularSugar'])
 
    self.batch = function(request) {
       RequestModel.add(request);
+   }
+
+   self.clearAll = function(){
+       RequestModel.clearAll();
    }
 
    self.syncAuto = function() {
@@ -238,6 +249,11 @@ angular.module('Sync', ['AngularSugar'])
 
    self.save = function() {
       localStorage.requests = JSON.stringify(self.requests);
+   }
+
+   self.clearAll = function(){
+       self.requests.length = 0;
+       self.save();
    }
 
    /**
