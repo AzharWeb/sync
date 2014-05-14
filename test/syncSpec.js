@@ -141,20 +141,24 @@ describe('Sync', function() {
             expect(Sync.requests.length).toBe(0);
          });
 
-         it('Should not remove calls from the stack if they fail from 401 or timeout', function() {
+         it('Should not remove calls from the stack if they fail from timeout', function() {
 
-            $httpBackend.expect('GET', '/no-response');
-            $httpBackend.expect('GET', '/401');
+            $httpBackend.expect('GET', '/no-response').respond(0, '');
 
-            Sync.batch({url:'/timeout', method:'GET'});
+            Sync.batch({url:'/no-response', method:'GET'});
             expect(RequestModel.requests.length).toBe(1);
             flushResponse();
             expect(Sync.requests.length).toBe(1);
+         });
+
+         it('Should not remove calls from the stack if they fail from 401', function() {
+
+            $httpBackend.expect('GET', '/401').respond(401, '');
 
             Sync.batch({url:'/401', method:'GET'});
-            expect(RequestModel.requests.length).toBe(2);
+            expect(RequestModel.requests.length).toBe(1);
             flushResponse();
-            expect(Sync.requests.length).toBe(2);
+            expect(Sync.requests.length).toBe(1);
          });
 
          it('Should remove calls from the stack and notify the user if they 500 fail', function() {
@@ -224,21 +228,25 @@ describe('Sync', function() {
 
          it('Should sync the requests in the order they was added', function() {
 
+         	$httpBackend.expect('GET', '/401').respond(401, '');
+
             Sync.batch({url:'/success', method:'GET'});
             Sync.batch({url:'/success', method:'GET'});
-            Sync.batch({url:'/error', method:'GET'});
+            Sync.batch({url:'/401', method:'GET'});
 
             flushResponse();
 
             expect(Sync.requests.length).toBe(1);
          });
 
-         it('Should stop sync cycle and add back the last request if a request fails.', function() {
+         it('Should stop sync cycle and add not remove the last request if a request fails.', function() {
+
+         	$httpBackend.expect('GET', '/401').respond(401, '');
 
             Sync.batch({url:'/success', method:'GET'});
             Sync.batch({url:'/success', method:'GET'});
-            Sync.batch({url:'/error', method:'GET'});
-            Sync.batch({url:'/error', method:'GET'});
+            Sync.batch({url:'/401', method:'GET'});
+            Sync.batch({url:'/401', method:'GET'});
             Sync.batch({url:'/success', method:'GET'});
 
             flushResponse();
@@ -250,7 +258,7 @@ describe('Sync', function() {
             beforeEach(function(){
 
 
-               SyncOptions.downSync = '/downsync';
+               SyncOptions.downSync = {method: 'GET', url: '/downsync'};
                $httpBackend.when('GET', '/downsync').respond(200, downSyncData);
                $httpBackend.when('GET', '/downsync/progress').respond(200, downSyncData);
                $httpBackend.when('GET', '/downsync/err').respond(500);
@@ -304,9 +312,9 @@ describe('Sync', function() {
                expect($rootScope.$emit).toHaveBeenCalledWith("Sync.DOWNSYNC_COMPLETE", downSyncData);
             });
 
-            it('Should trigger a Sync.DONWSYNC_FAILED event iuf the downsync is failed.', function() {
+            it('Should trigger a Sync.DONWSYNC_FAILED event if the downsync is failed.', function() {
 
-               SyncOptions.downSync = '/downsync/err';
+               SyncOptions.downSync = {url: '/downsync/err', method: 'GET'};
                spyOn($rootScope, '$emit');
                Sync.batch({url:'/success', method:'GET'});
                Sync.batch({url:'/success', method:'GET'});

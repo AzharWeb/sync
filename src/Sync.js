@@ -4,6 +4,7 @@
  * [ ] Notify should be an event since in auto mode we don't have a conveinient
  *     access point to get the promise
  * [ ] Way to handle error in sync
+ * [ ] Add strict mode to not loose any request
 
    ? can we remove the poll mode and use the regular batched calls
    to check for a connection issue as well. I can use the HTTP request manager
@@ -80,7 +81,8 @@ angular.module('Sync', ['AngularSugar'])
             self.downSyncWatcher = $rootScope.$watch(function(){
                return RequestModel.requests.length;
             }, function( newValue, oldValue ){
-               if( newValue != oldValue ){
+               console.log('Reading requests');
+               if( newValue && newValue != oldValue ){
                   self._cancelDownSync();
                   self.downSyncWatcher(); // remove watcher
                }
@@ -90,16 +92,13 @@ angular.module('Sync', ['AngularSugar'])
             self.downSyncDefer = $q.defer();
 
             // attempt downsync
-            $http({
-               url: SyncOptions.downSync,
-               method:'GET',
-               timeout: self.downSyncDefer.promise.then(function(resp){
-                  console.log('Donwsync cancelled', resp);
-                  $rootScope.$emit('Sync.DOWNSYNC_CANCELLED', resp);
+            SyncOptions.downSync.timeout = self.downSyncDefer.promise.then(function(resp){
+              console.log('Donwsync cancelled', resp);
+              $rootScope.$emit('Sync.DOWNSYNC_CANCELLED', resp);
 
-                  return resp;
-               })
-            })
+              return resp;
+           })
+            $http(SyncOptions.downSync)
                .then(function(resp){
                   console.log('Donwsync complete!');
                   $rootScope.$emit('Sync.DOWNSYNC_COMPLETE', resp.data);
@@ -118,7 +117,7 @@ angular.module('Sync', ['AngularSugar'])
          $rootScope.$emit('Sync.END_ERROR', syncData);
 
       }, function(syncData) { // sync progress
-
+         console.log('Synd progress:', syncData);
          $rootScope.$emit('Sync.PROGRESS', syncData);
       });
 
@@ -151,7 +150,8 @@ angular.module('Sync', ['AngularSugar'])
          // the request is handled and
          // confirmed by the server so
          // we can go ahead with the next one
-         console.log('### Validating...', RequestModel.validateNext());
+         RequestModel.validateNext()
+         console.log('### Validating...');
          console.log('### Requests left: ',RequestModel.requests);
          self.flushDefer.notify({req: request, res: res, status:'success'});
          self._flush();
@@ -266,7 +266,9 @@ angular.module('Sync', ['AngularSugar'])
    }
 
    self.validateNext = function(){
-      return self.requests.pop();
-      self.save();
+   		var el = self.requests.pop();
+   		self.save();
+      return el;
+      
    }
 })

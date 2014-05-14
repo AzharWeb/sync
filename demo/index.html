@@ -25,7 +25,28 @@
       <div>
          {{ downsync.data }}
       </div>
-      
+      <button ng-click="addHabit('name', 'description')">Add habit</button>
+      <button ng-click="editHabit('1234')">Edit habit</button>
       <button ng-click="clearAll()">Clear All</button>
+
+      <h2>Habits</h2>
+
+	  <input type="text" ng-model="habitName" ><button ng-click="addHabit(habitName)">Add habit</button>
+      <ul>
+      	<li ng-repeat="habit in habits">
+      		<div ng-if="!habit.isEditable">
+      			{{ habit.name }} - {{ habit.description }} -  {{habit.ticks.length}}
+      			<button ng-click="habit.isEditable = true">Edit</button>
+      			<button ng-click="tickHabit(habit)">TIck!</button>
+      			
+      			<button ng-click="removeHabit(habit.id)">remove</button>
+      		</div>
+			<div ng-if="habit.isEditable">
+				<input type="text" ng-model="habit.name">
+				<input type="text" ng-model="habit.description">
+				<button ng-click="saveHabit(habit); habit.isEditable = false">Save</button>
+			</div>	
+      	</li>
+      </ul>
    </body>
 </html>
